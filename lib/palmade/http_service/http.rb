@@ -324,9 +324,6 @@ module Palmade::HttpService
                                                      :request_uri => uri.to_s }.merge(oauth_params))
 
           c.headers["Authorization"] = auth = oauth_helper.header
-
-          puts "BASE: #{oauth_helper.signature_base_string}"
-          puts "AUTH: #{auth.inspect}"
         end
       end
 
