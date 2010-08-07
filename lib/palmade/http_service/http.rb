@@ -234,11 +234,10 @@ module Palmade::HttpService
       # set form post
       # TODO: support multipart post data (e.g. uploading files via POST)
       if meth == :post && options.include?(:query)
-		if options.include?(:post_utf8) && options[:post_utf8]
-		  pb = convert_to_post_data_utf8(options[:query])
-		else
-		  pb = convert_to_post_data(options[:query])
-		end
+        c.post_body = pb = convert_to_post_data(options[:query])
+        unless options[:headers].include?("Content-Type")
+          options[:headers]["Content-Type"] = "application/x-www-form-urlencoded"
+        end
       else
         pb = nil
       end
@@ -250,7 +249,7 @@ module Palmade::HttpService
         # do nothing
       when options[:body].is_a?(Hash)
         # body is assumed to be a hash of form data
-        c.post_body = bdstream = convert_to_post_data(options[:body])
+        bdstream = convert_to_post_data(options[:body])
       when options[:body].respond_to?(:read)
         bdstream = options[:body]
 
@@ -264,7 +263,7 @@ module Palmade::HttpService
       else
         # the body is assumed to be already formatted
         # as a post form data
-        c.post_body = bdstream = options[:body].to_s
+        bdstream = options[:body].to_s
       end
 
       # setup Content-Length, if needed
@@ -282,15 +281,29 @@ module Palmade::HttpService
         end
       end
 
-      # setup basic auth
-      if options.include?(:basic_auth)
-        case options[:basic_auth]
-        when Hash
-          c.userpwd = "#{options[:basic_auth][:username]}:#{options[:basic_auth][:password]}"
-        when Array
-          c.userpwd = "#{options[:basic_auth][0]}:#{options[:basic_auth][1]}"
-        else
-          c.userpwd = "#{options[:basic_auth]}"
+
+      unless options[:headers].include?("Authorization")
+        # setup basic auth
+        if options.include?(:basic_auth)
+          case options[:basic_auth]
+          when Hash
+            c.userpwd = "#{options[:basic_auth][:username]}:#{options[:basic_auth][:password]}"
+          when Array
+            c.userpwd = "#{options[:basic_auth][0]}:#{options[:basic_auth][1]}"
+          else
+            c.userpwd = "#{options[:basic_auth]}"
+          end
+
+        # add oauth authorization key
+        elsif options.include?(:oauth_consumer) &&
+            options.include?(:oauth_token)
+
+          oauth_params = options[:oauth_params] || { }
+          oauth_helper = OAuth::Client::Helper.new(c,
+                                                   { :consumer => options[:oauth_consumer],
+                                                     :token => options[:oauth_token],
+                                                     :request_uri => uri.to_s }.merge(oauth_params))
+          options[:headers]["Authorization"] = oauth_helper.header
         end
       end
 
@@ -313,19 +326,16 @@ module Palmade::HttpService
           wrtn = bd.write(s) if wrtn == 0
           recvd += wrtn
         end
-
         wrtn
       end
 
       case meth
       when :get
         c.http_get
-        #STDERR.puts "D: #{c.download_speed}"
       when :post
         c.http_post(pb)
       when :put
         c.http_put(bdstream)
-        #STDERR.puts "U: #{c.upload_speed}"
       when :delete
         c.http_delete
       when :head
@@ -475,10 +485,6 @@ module Palmade::HttpService
 
     def self.query_string(params, sep = '&')
       convert_to_post_data(params, sep)
-    end
-
-    def self.convert_to_post_data_utf8(params, sep = '&')
-      params.map { |k,v| "#{urlencode(k.to_s)}=#{v}" }.join(sep).to_utf8
     end
 
     def self.convert_to_post_data(params, sep = '&')
