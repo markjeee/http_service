@@ -478,15 +478,23 @@ module Palmade::HttpService
     end
 
     def self.convert_to_post_data_utf8(params, sep = '&')
-      params.map { |k,v| "#{k.to_s.urlencode}=#{v}" }.join(sep).to_utf8
+      params.map { |k,v| "#{urlencode(k.to_s)}=#{v}" }.join(sep).to_utf8
     end
 
     def self.convert_to_post_data(params, sep = '&')
-      params.map { |k,v| "#{k.to_s.urlencode}=#{v.to_s.urlencode}" }.join(sep)
+      params.map { |k,v| "#{urlencode(k.to_s)}=#{urlencode(v.to_s)}" }.join(sep)
     end
 
     def self.convert_to_cookie_string(cookies)
       cookies.collect { |k, v| "#{k}=#{v}" }.join("; ")
+    end
+
+    def self.urlencode(s)
+      URI.encode(s)
+    end
+
+    def self.urldecode(s)
+      URI.decode(s)
     end
 
     def self.parse_header_str(head_str)
