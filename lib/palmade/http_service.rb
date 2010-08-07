@@ -12,5 +12,6 @@ module Palmade
     autoload :Http, File.join(HTTP_SERVICE_LIB_DIR, 'http_service/http')
     autoload :Service, File.join(HTTP_SERVICE_LIB_DIR, 'http_service/service')
     autoload :Utils, File.join(HTTP_SERVICE_LIB_DIR, 'http_service/utils')
+    autoload :Patches, File.join(HTTP_SERVICE_LIB_DIR, 'http_service/patches')
   end
 end

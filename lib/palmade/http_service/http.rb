@@ -51,6 +51,22 @@ module Palmade::HttpService
       end
     end
 
+    # Call this method, to load the curb_request proxy
+    # found on OAuth's gem. Also, loads a patch to a bug as of
+    # OAuth v.0.4.1
+    def self.use_oauth
+      if defined?(OAuth)
+        unless defined?(OAuth::RequestProxy::Curl::Easy)
+          require 'oauth/request_proxy/curb_request.rb'
+        end
+
+        # just load our own class
+        Palmade::HttpService::Patches::CurbRequest
+      else
+        raise "OAuth not defined. Please fix!"
+      end
+    end
+
     class BlankSlate #:nodoc:
       instance_methods.each { |m| undef_method(m) unless (m =~ /^__/ || [ 'object_id' ].include?(m.to_s)) }
     end
@@ -281,6 +297,8 @@ module Palmade::HttpService
         end
       end
 
+      # let's setup the headers
+      c.headers = options[:headers]
 
       unless options[:headers].include?("Authorization")
         # setup basic auth
@@ -300,15 +318,17 @@ module Palmade::HttpService
 
           oauth_params = options[:oauth_params] || { }
           oauth_helper = OAuth::Client::Helper.new(c,
-                                                   { :consumer => options[:oauth_consumer],
+                                                   { :http_method => meth.to_s.upcase,
+                                                     :consumer => options[:oauth_consumer],
                                                      :token => options[:oauth_token],
                                                      :request_uri => uri.to_s }.merge(oauth_params))
-          options[:headers]["Authorization"] = oauth_helper.header
+
+          c.headers["Authorization"] = auth = oauth_helper.header
+
+          puts "BASE: #{oauth_helper.signature_base_string}"
+          puts "AUTH: #{auth.inspect}"
         end
       end
-
-      # let's setup the headers
-      c.headers = options[:headers]
 
       block.call(:start, c, uri, options) if block_given?
 
