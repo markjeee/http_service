@@ -83,6 +83,7 @@ module Palmade::HttpService
         @message = message
         @headers = headers
       end
+      def http_response?; true; end
 
       def headers
         if @headers.is_a?(Hash)
