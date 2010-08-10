@@ -1,4 +1,5 @@
 require 'uri'
+require 'benchmark'
 
 module Palmade::HttpService
   class Service
@@ -10,10 +11,17 @@ module Palmade::HttpService
       'Keep-Alive' => '300'
     }
 
+    DEFAULT_OPTIONS = {
+      :oauth_consumer => nil
+    }
+
     attr_reader :http
     attr_reader :logger
     attr_reader :headers
     attr_reader :base_url
+
+    attr_reader :auth_params
+    attr_accessor :oauth_consumer
 
     attr_writer :log_activity
     def log_activity(&block)
@@ -25,7 +33,9 @@ module Palmade::HttpService
     end
     alias :log_activity? :log_activity
 
-    def initialize(root_url, logger)
+    def initialize(root_url, logger = nil, options = { })
+      @options = DEFAULT_OPTIONS.merge(options)
+
       if root_url.is_a?(URI)
         u = root_url
       else
@@ -43,10 +53,24 @@ module Palmade::HttpService
 
       # this line requires the modified curb version found at:
       # http://github.com/markjeee/curb
-      @http.use_easy_perform = true
+      if @http.respond_to?(:use_easy_perform=)
+        @http.use_easy_perform = true
+      else
+        unless logger.nil?
+          warn "#{self.class.name} works best with the modified curb version by markjeee"
+        else
+          logger.warn { "#{self.class.name} works best with the modified curb version by markjeee" }
+        end
+      end
+
+      @auth_type = nil
+      @auth_credentials = nil
+      @auth_params = { }
 
       @logger = logger
       @headers = DEFAULT_HEADERS.merge({ })
+
+      @oauth_consumer = @options[:oauth_consumer]
     end
 
     def get(path, query = nil, io = nil)
@@ -140,46 +164,60 @@ module Palmade::HttpService
       auth(username, password, :basic)
     end
 
+    def oauth_auth(oauth_token, oauth_secret)
+      auth(oauth_token, oauth_secret, :oauth)
+    end
+
     protected
 
     def auth(username, password = nil, scheme = :basic)
       case scheme
       when :basic, 'basic'
-        @http.http_auth_types = :basic
-        @http.userpwd = "#{username}:#{password}"
+        @auth_scheme = :basic
+        @auth_credentials = [ username, password ]
+      when :oauth, 'oauth'
+        @auth_scheme = :oauth
+        @auth_credentials = [ username, password ]
       else
-        raise UnsupportedScheme, "Unsupported auth scheme. Supports only :basic now."
+        raise UnsupportedScheme, "Unsupported auth scheme. Supports only :basic, :oauth now."
       end
     end
 
-    def query_string(params, sep = '&')
-      Palmade::HttpService::Http.query_string(params, sep)
-    end
+    def add_auth_headers!(meth)
+      unless @http.headers.include?('Authorization')
+        case @auth_scheme
+        when :basic
+          # ignore, we already added the userpwd combo to @http object,
+          # on set
+          @http.http_auth_types = :basic or :any
+          @http.userpwd = "#{@auth_credentials[0]}:#{@auth_credentials[1]}"
+        when :oauth
+          @http.http_auth_types = :any
 
-    def contains_files?(params)
-      params.each do |name, value|
-        return true if value.kind_of? File or value.kind_of? Tempfile
-      end
-      return false
-    end
+          raise "OAuth consumer object not set (@auth_consumer is nil)" if @auth_consumer.nil?
 
-    def convert_to_post_fields(params)
-      params.collect do |name, value|
-        if value.is_a? File or value.is_a? Tempfile
-          Curl::PostField.file(name.to_s, value.path)
+          oauth_token = OAuth::Token.new(@auth_credentials[0], @auth_credentials[1])
+          oauth_helper = OAuth::Client::Helper.new(@http,
+                                                   { :http_method => meth.to_s.upcase,
+                                                     :consumer => @oauth_consumer,
+                                                     :token => oauth_token,
+                                                     :request_uri => @http.url }.merge(@auth_params))
+
+          @http.headers["Authorization"] = auth = oauth_helper.header
         else
-          Curl::PostField.content(name.to_s, value.to_s)
+          # ignore
         end
       end
     end
 
-    def convert_to_post_data(params, sep = '&')
-      Palmade::HttpService::Http.convert_to_post_data(params, sep)
+    def prepare_http_for_request!(meth, url, override_headers = { })
+      @http.headers = @headers.merge(override_headers)
+      @http.url = url.to_s
+      add_auth_headers!(meth)
     end
 
     def http_get(url, io = nil, override_headers = { })
-      @http.headers = @headers.merge(override_headers)
-      @http.url = url.to_s
+      prepare_http_for_request!('GET', url, override_headers)
 
       if io.nil?
         @http.http_get
@@ -196,8 +234,7 @@ module Palmade::HttpService
     end
 
     def http_head(url, override_headers = { })
-      @http.headers = @headers.merge(override_headers)
-      @http.url = url.to_s
+      prepare_http_for_request!('HEAD', url, override_headers)
 
       @http.http_head
       io = StringIO.new(@http.body_str)
@@ -208,17 +245,34 @@ module Palmade::HttpService
     end
 
     def http_post(url, params = nil, io = nil, override_headers = { })
-      @http.headers = @headers.merge(override_headers)
-      @http.url = url.to_s
-
+      # Prepare POST parameters/query first, and add the proper
+      # Content-Type header for OAuth helper to use when building the
+      # signature base
       unless params.nil?
+        content_type = nil
+
         if contains_files?(params)
-          @http.multipart_form_post = true
+          c.multipart_form_post = true
+
+          content_type = 'multipart/formdata'
+          pb = convert_to_post_fields(params)
+        else
+          c.multipart_form_post = false
+
+          content_type = 'application/x-www-form-urlencoded'
+          pb = [ convert_to_post_data(params) ]
+          c.post_body = pb[0]
         end
-        pb = convert_to_post_fields(params)
+
+        # let's set the proper content type as needed.
+        unless override_headers.include?('Content-Type')
+          override_headers['Content-Type'] = content_type
+        end
       else
-        pb = []
+        pb = [ ]
       end
+
+      prepare_http_for_request!('POST', url, override_headers)
 
       if io.nil?
         @http.http_post(*pb)
@@ -231,13 +285,13 @@ module Palmade::HttpService
       end
       io.rewind
 
-      @http.multipart_form_post = false
       Response.new(io, wrtn, @http.response_code, "", @http.header_str)
+    ensure
+      @http.multipart_form_post = false
     end
 
     def http_put(url, data, override_headers = { })
-      @http.headers = @headers.merge(override_headers)
-      @http.url = url.to_s
+      prepare_http_for_request!('PUT', url, override_headers)
 
       if data.respond_to?('read')
         req_data = data.read
@@ -253,8 +307,7 @@ module Palmade::HttpService
     end
 
     def http_delete(url, override_headers = { })
-      @http.headers = @headers.merge(override_headers)
-      @http.url = url.to_s
+      prepare_http_for_request!('DELETE', url, override_headers)
 
       @http.http_delete
       io = StringIO.new(@http.body_str)
@@ -265,6 +318,31 @@ module Palmade::HttpService
 
     def http_reset
       @http.reset unless @http.nil?
+    end
+
+    def query_string(params, sep = '&')
+      Palmade::HttpService::Http.query_string(params, sep)
+    end
+
+    def contains_files?(params)
+      params.each do |name, value|
+        return true if value.kind_of?(File) || value.kind_of?(Tempfile)
+      end
+      return false
+    end
+
+    def convert_to_post_fields(params)
+      params.collect do |name, value|
+        if value.is_a?(File) || value.is_a?(Tempfile)
+          Curl::PostField.file(name.to_s, value.path)
+        else
+          Curl::PostField.content(name.to_s, value.to_s)
+        end
+      end
+    end
+
+    def convert_to_post_data(params, sep = '&')
+      Palmade::HttpService::Http.convert_to_post_data(params, sep)
     end
 
     def log_response(method, url, rt, resp)
