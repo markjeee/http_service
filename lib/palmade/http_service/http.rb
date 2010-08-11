@@ -532,34 +532,49 @@ module Palmade::HttpService
       unescape(s)
     end
 
-    # I ALSO STOLE these from Rack::Utils
-    # Performs URI escaping so that you can construct proper
-    # query strings faster.  Use this rather than the cgi.rb
-    # version since it's faster.  (Stolen from Camping).
+    # TODO: Investigate why OAuth uses a special code to encode
+    # params, while Rack uses a different one!
+    #
+    # These two were stolen from OAuth, for some reason OAuth
+    # signature uses a different encoding scheme, that produces a
+    # different signature if we don't use this one. So for now, let's
+    # just use this one.
     def self.escape(s)
-      s.to_s.gsub(/([^ a-zA-Z0-9_.-]+)/n) {
-        '%'+$1.unpack('H2'*bytesize($1)).join('%').upcase
-      }.tr(' ', '+')
+      CGI.escape(s.to_s).gsub("%7E", '~').gsub("+", "%20")
     end
 
-    # Unescapes a URI escaped string. (Stolen from Camping).
     def self.unescape(s)
-      s.tr('+', ' ').gsub(/((?:%[0-9a-fA-F]{2})+)/n){
-        [$1.delete('%')].pack('H*')
-      }
+      URI.unescape(s.gsub('+', '%2B'))
     end
 
-    # Return the bytesize of String; uses String#length under Ruby 1.8 and
-    # String#bytesize under 1.9.
-    if ''.respond_to?(:bytesize)
-      def self.bytesize(string)
-        string.bytesize
-      end
-    else
-      def self.bytesize(string)
-        string.size
-      end
-    end
+    # # I ALSO STOLE these from Rack::Utils
+    # # Performs URI escaping so that you can construct proper
+    # # query strings faster.  Use this rather than the cgi.rb
+    # # version since it's faster.  (Stolen from Camping).
+    # def self.escape(s)
+    #   s.to_s.gsub(/([^ a-zA-Z0-9_.-]+)/n) {
+    #     '%'+$1.unpack('H2'*bytesize($1)).join('%').upcase
+    #   }.tr(' ', '+')
+    # end
+
+    # # Unescapes a URI escaped string. (Stolen from Camping).
+    # def self.unescape(s)
+    #   s.tr('+', ' ').gsub(/((?:%[0-9a-fA-F]{2})+)/n){
+    #     [$1.delete('%')].pack('H*')
+    #   }
+    # end
+
+    # # Return the bytesize of String; uses String#length under Ruby 1.8 and
+    # # String#bytesize under 1.9.
+    # if ''.respond_to?(:bytesize)
+    #   def self.bytesize(string)
+    #     string.bytesize
+    #   end
+    # else
+    #   def self.bytesize(string)
+    #     string.size
+    #   end
+    # end
 
     def self.parse_header_str(head_str)
       headers = { }
