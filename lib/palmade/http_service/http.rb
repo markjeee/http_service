@@ -5,7 +5,18 @@ require 'net/http'
 module Palmade::HttpService
   # this HTTP library, will use HTTP 1.1 by default!
   module Http
-    class HttpError < StandardError; end
+    class HttpError < StandardError
+      attr_reader :response
+
+      def initialize(msg = nil, response = nil)
+        super(msg)
+        @response = response
+      end
+
+      def http_error?
+        true
+      end
+    end
 
     def self.use_curb?
       if defined?(@@use_curb)
@@ -98,7 +109,7 @@ module Palmade::HttpService
       end
 
       def raise_http_error
-        raise HttpError, "Http failed: #{@code}: #{@message}"
+        raise HttpError.new("Http failed #{@code} #{@message}", self)
       end
 
       def success?
