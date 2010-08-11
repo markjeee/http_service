@@ -506,7 +506,7 @@ module Palmade::HttpService
     end
 
     def self.convert_to_post_data(params, sep = '&')
-      params.map { |k,v| "#{urlencode(k.to_s)}=#{urlencode(v.to_s)}" }.join(sep)
+      params.map { |k,v| "#{escape(k.to_s)}=#{escape(v.to_s)}" }.join(sep)
     end
 
     def self.convert_to_cookie_string(cookies)
@@ -514,11 +514,40 @@ module Palmade::HttpService
     end
 
     def self.urlencode(s)
-      URI.encode(s)
+      escape(s)
     end
 
     def self.urldecode(s)
-      URI.decode(s)
+      unescape(s)
+    end
+
+    # I ALSO STOLE these from Rack::Utils
+    # Performs URI escaping so that you can construct proper
+    # query strings faster.  Use this rather than the cgi.rb
+    # version since it's faster.  (Stolen from Camping).
+    def self.escape(s)
+      s.to_s.gsub(/([^ a-zA-Z0-9_.-]+)/n) {
+        '%'+$1.unpack('H2'*bytesize($1)).join('%').upcase
+      }.tr(' ', '+')
+    end
+
+    # Unescapes a URI escaped string. (Stolen from Camping).
+    def self.unescape(s)
+      s.tr('+', ' ').gsub(/((?:%[0-9a-fA-F]{2})+)/n){
+        [$1.delete('%')].pack('H*')
+      }
+    end
+
+    # Return the bytesize of String; uses String#length under Ruby 1.8 and
+    # String#bytesize under 1.9.
+    if ''.respond_to?(:bytesize)
+      def self.bytesize(string)
+        string.bytesize
+      end
+    else
+      def self.bytesize(string)
+        string.size
+      end
     end
 
     def self.parse_header_str(head_str)

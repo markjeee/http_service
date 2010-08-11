@@ -19,6 +19,7 @@ module Palmade::HttpService
     attr_reader :logger
     attr_reader :headers
     attr_reader :base_url
+    attr_reader :base_path
 
     attr_reader :auth_params
     attr_accessor :oauth_consumer
@@ -47,6 +48,7 @@ module Palmade::HttpService
       else
         @base_url = "#{u.scheme}://#{u.host}:#{u.port}"
       end
+      @base_path = [ nil, "", "/" ].include?(u.path) ? "/" : u.path
 
       @http = Curl::Easy.new
       @http.ssl_verify_peer = false
@@ -74,7 +76,7 @@ module Palmade::HttpService
     end
 
     def get(path, query = nil, io = nil)
-      url = URI.join(@base_url, path)
+      url = File.join(@base_url, @base_path, path)
       url += "?#{query_string(query)}" unless query.nil?
 
       if log_activity?
@@ -97,7 +99,7 @@ module Palmade::HttpService
     end
 
     def post(path, params = nil, query = nil, io = nil)
-      url = URI.join(@base_url, path)
+      url = File.join(@base_url, @base_path, path)
       url += "?#{query_string(query)}" unless query.nil?
 
       if log_activity?
@@ -120,7 +122,7 @@ module Palmade::HttpService
     end
 
     def put(path, data, query = nil)
-      url = URI.join(@base_url, path)
+      url = File.join(@base_url, @base_path, path)
       url += "?#{query_string(query)}" unless query.nil?
 
       if log_activity?
@@ -143,7 +145,7 @@ module Palmade::HttpService
     end
 
     def delete(path, query = nil)
-      url = URI.join(@base_url, path)
+      url = File.join(@base_url, @base_path, path)
       url += "?#{query_string(query)}" unless query.nil?
 
       if log_activity?
@@ -252,16 +254,16 @@ module Palmade::HttpService
         content_type = nil
 
         if contains_files?(params)
-          c.multipart_form_post = true
+          @http.multipart_form_post = true
 
           content_type = 'multipart/formdata'
           pb = convert_to_post_fields(params)
         else
-          c.multipart_form_post = false
+          @http.multipart_form_post = false
 
           content_type = 'application/x-www-form-urlencoded'
           pb = [ convert_to_post_data(params) ]
-          c.post_body = pb[0]
+          @http.post_body = pb[0]
         end
 
         # let's set the proper content type as needed.
