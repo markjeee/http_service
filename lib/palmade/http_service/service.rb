@@ -256,20 +256,18 @@ module Palmade::HttpService
         if contains_files?(params)
           @http.multipart_form_post = true
 
-          content_type = 'multipart/formdata'
           pb = convert_to_post_fields(params)
         else
           @http.multipart_form_post = false
 
-          content_type = 'application/x-www-form-urlencoded'
+          unless override_headers.include?('Content-Type')
+            override_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+          end
+
           pb = [ convert_to_post_data(params) ]
           @http.post_body = pb[0]
         end
 
-        # let's set the proper content type as needed.
-        unless override_headers.include?('Content-Type')
-          override_headers['Content-Type'] = content_type
-        end
       else
         pb = [ ]
       end
