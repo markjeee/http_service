@@ -228,6 +228,57 @@ module Palmade::HttpService
       make_request(:put, uri, nil, options, &block)
     end
 
+    def self.make_oauth_authorization(meth, uri, options = { })
+      uri = URI.parse(uri) unless uri.is_a?(URI)
+
+      verb = nil
+      case meth
+      when :get
+        verb = ::Net::HTTP::Get
+      when :post
+        verb = ::Net::HTTP::Post
+      when :put
+        verb = ::Net::HTTP::Put
+      when :delete
+        verb = ::Net::HTTP::Delete
+      when :head
+        verb = ::Net::HTTP::Head
+      else
+        raise "Unknown or unsupported HTTP method: #{meth}"
+      end
+
+      # let's create the request object
+      r = verb.new(uri.request_uri)
+
+      # let's set form data, if this is a POST and includes a query data
+      if verb == ::Net::HTTP::Post &&
+          options.include?(:query)
+        r.set_form_data(options[:query])
+      end
+
+      if options.include?(:headers)
+        r.initialize_http_header(options[:headers])
+      end
+
+      oauth_params = options[:oauth_params] || { }
+      oauth_authorization(r,
+                          options[:oauth_consumer],
+                          options[:oauth_token],
+                          meth,
+                          uri,
+                          oauth_params)
+    end
+
+    def self.oauth_authorization(r, consumer, token, meth, uri, oauth_params = { })
+      oauth_helper = OAuth::Client::Helper.new(r,
+                                               { :http_method => meth.to_s.upcase,
+                                                 :consumer => consumer,
+                                                 :token => token,
+                                                 :request_uri => uri.to_s }.merge(oauth_params))
+
+      oauth_helper.header
+    end
+
     def self.make_request(meth, uri, io, options = { }, &block)
       if use_curb?
         make_curb_request(meth, uri, io, options, &block)
@@ -329,13 +380,12 @@ module Palmade::HttpService
             options.include?(:oauth_token)
 
           oauth_params = options[:oauth_params] || { }
-          oauth_helper = OAuth::Client::Helper.new(c,
-                                                   { :http_method => meth.to_s.upcase,
-                                                     :consumer => options[:oauth_consumer],
-                                                     :token => options[:oauth_token],
-                                                     :request_uri => uri.to_s }.merge(oauth_params))
-
-          c.headers["Authorization"] = auth = oauth_helper.header
+          c.headers["Authorization"] = oauth_authorization(c,
+                                                           options[:oauth_consumer],
+                                                           options[:oauth_token],
+                                                           meth,
+                                                           uri,
+                                                           oauth_params)
         end
       end
 
