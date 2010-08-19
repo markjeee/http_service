@@ -521,7 +521,7 @@ module Palmade::HttpService
       response = nil
 
       recvd = 0
-      bd = io.if_nil? { StringIO.new }
+      bd = io || StringIO.new
 
       slow_down_evm do
         http.start do |h|
@@ -581,6 +581,28 @@ module Palmade::HttpService
     def self.urldecode(s)
       unescape(s)
     end
+
+    def self.slow_down_evm(&block)
+      working = true
+      sleeper = lambda do
+        if working
+          sleep(0.1) # default tick in EV is 90 milliseconds (0.09)
+          EventMachine.next_tick(&sleeper)
+        end
+      end
+
+      if defined?(EventMachine) && EventMachine.reactor_running? &&
+          !EventMachine.reactor_thread?
+        begin
+          EventMachine.next_tick(&sleeper)
+          yield
+        ensure
+          working = false
+        end
+      else
+        yield
+      end
+    end 
 
     # TODO: Investigate why OAuth uses a special code to encode
     # params, while Rack uses a different one!
