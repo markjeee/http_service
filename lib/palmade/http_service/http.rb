@@ -5,6 +5,8 @@ require 'net/http'
 module Palmade::HttpService
   # this HTTP library, will use HTTP 1.1 by default!
   module Http
+    DEFAULT_HEADERS = {'Connection' => 'Close'}
+
     class HttpError < StandardError
       attr_reader :response
 
@@ -361,7 +363,7 @@ module Palmade::HttpService
       end
 
       # let's setup the headers
-      c.headers = options[:headers]
+      c.headers = DEFAULT_HEADERS.merge(options[:headers])
 
       unless options[:headers].include?("Authorization")
         # setup basic auth
