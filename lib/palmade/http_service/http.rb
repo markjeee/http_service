@@ -80,11 +80,7 @@ module Palmade::HttpService
       end
     end
 
-    class BlankSlate #:nodoc:
-      instance_methods.each { |m| undef_method(m) unless (m =~ /^__/ || [ 'object_id' ].include?(m.to_s)) }
-    end
-
-    class Response < BlankSlate #:nodoc:
+    class Response
       attr_accessor :body, :size, :code, :message
       alias :status :message
 
@@ -124,7 +120,7 @@ module Palmade::HttpService
       end
 
       def json_read
-        Palmade::HttpService::Http.json_parse { read }
+        Palmade::HttpService::Http.json_parse { @body.rewind; @body.read }
       end
 
       def xml_read(options = { })
@@ -132,7 +128,7 @@ module Palmade::HttpService
       end
 
       def to_s
-        "#{@code} - #{message}"
+        "HTTP #{@code} #{message}".strip
       end
 
       def last_modified
