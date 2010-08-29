@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# encoding: utf-8
+
 module Palmade::HttpService
   module Patches
     # This is a patch to OAuth's default Curl::Easy proxy code.
@@ -20,12 +23,18 @@ module Palmade::HttpService
         options[:http_method] || 'GET'
       end
 
+      def content_type
+        if request.headers.include?('Content-Type')
+          request.headers['Content-Type'].split(/\s*[;,]\s*/, 2).first.downcase
+        else
+          nil
+        end
+      end
+
       def post_parameters
         post_body = { }
         # Post params are only used if posting form data
-        if (request.headers['Content-Type'] &&
-            request.headers['Content-Type'].downcase == 'application/x-www-form-urlencoded')
-
+        if content_type == 'application/x-www-form-urlencoded'
           request.post_body.split("&").each do |str|
             param = str.split("=")
             post_body[unescape(param[0])] = unescape(param[1])

@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# encoding: utf-8
+
 require 'uri'
 require 'cgi'
 require 'net/http'
@@ -5,7 +8,7 @@ require 'net/http'
 module Palmade::HttpService
   # this HTTP library, will use HTTP 1.1 by default!
   module Http
-    DEFAULT_HEADERS = {'Connection' => 'Close'}
+    DEFAULT_HEADERS = { 'Connection' => 'Close' }
 
     class HttpError < StandardError
       attr_reader :response
@@ -308,13 +311,31 @@ module Palmade::HttpService
         options[:headers].delete(:cookie)
       end
 
+      if options.include?(:charset_encoding)
+        charset_encoding = options[:charset_encoding]
+      else
+        charset_encoding = nil
+      end
+
       # set form post
       # TODO: support multipart post data (e.g. uploading files via POST)
       if meth == :post && options.include?(:query)
-        c.post_body = pb = convert_to_post_data(options[:query])
+        pb = convert_to_post_data(options[:query])
+
         unless options[:headers].include?("Content-Type")
-          options[:headers]["Content-Type"] = "application/x-www-form-urlencoded"
+          if !charset_encoding.nil?
+            post_encoding = charset_encoding
+            pb.force_encoding(Encoding.find(charset_encoding)) if pb.respond_to?(:force_encoding)
+          elsif pb.respond_to?(:encoding)
+            post_encoding = pb.encoding.name
+          else
+            post_encoding = 'ISO-8859-1'
+          end
+
+          options[:headers]["Content-Type"] = "application/x-www-form-urlencoded; charset=#{post_encoding}"
         end
+
+        c.post_body = pb
       else
         pb = nil
       end
@@ -600,7 +621,7 @@ module Palmade::HttpService
       else
         yield
       end
-    end 
+    end
 
     # TODO: Investigate why OAuth uses a special code to encode
     # params, while Rack uses a different one!

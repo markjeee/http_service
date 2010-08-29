@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# encoding: utf-8
+
 require 'uri'
 require 'benchmark'
 
@@ -23,6 +26,8 @@ module Palmade::HttpService
 
     attr_reader :auth_params
     attr_accessor :oauth_consumer
+
+    attr_accessor :charset_encoding
 
     attr_writer :log_activity
     def log_activity(&block)
@@ -73,6 +78,9 @@ module Palmade::HttpService
       @headers = DEFAULT_HEADERS.merge({ })
 
       @oauth_consumer = @options[:oauth_consumer]
+
+      # nil by default, unless user specified.
+      @charset_encoding = nil
     end
 
     def get(path, query = nil, io = nil)
@@ -258,16 +266,24 @@ module Palmade::HttpService
 
           pb = convert_to_post_fields(params)
         else
-          @http.multipart_form_post = false
+          pb = [ convert_to_post_data(params) ]
 
           unless override_headers.include?('Content-Type')
-            override_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+            if !charset_encoding.nil?
+              post_encoding = charset_encoding
+              pb[0].force_encoding(Encoding.find(charset_encoding)) if pb[0].respond_to?(:force_encoding)
+            elsif pb[0].respond_to?(:encoding)
+              post_encoding = pb[0].encoding.name
+            else
+              post_encoding = 'ISO-8859-1'
+            end
+
+            override_headers['Content-Type'] = "application/x-www-form-urlencoded; charset=#{post_encoding}"
           end
 
-          pb = [ convert_to_post_data(params) ]
+          @http.multipart_form_post = false
           @http.post_body = pb[0]
         end
-
       else
         pb = [ ]
       end
